@@ -28,14 +28,16 @@ def leer_archivo (nombreArchivo):
 
 class LayoutGraph:
 
-  def __init__(self, grafo, iters, refresh, c1, c2, verbose=False):
+  def __init__(self, grafo, iters, refresh, temp, c1, c2, cooling, grav, verbose=False):
     """
     Parámetros:
     grafo: grafo en formato lista
     iters: cantidad de iteraciones a realizar
     refresh: cada cuántas iteraciones graficar. Si su valor es cero, entonces debe graficarse solo al final.
+    temp: temperatura del sistema
     c1: constante de repulsión
     c2: constante de atracción
+    cooling: Constante de enfriamiento
     verbose: si está encendido, activa los comentarios
     """
 
@@ -45,22 +47,25 @@ class LayoutGraph:
     self.aristas = grafo[1]
 
     # Inicializo estado
-    # Completar
     self.posicion_x = {}
     self.posicion_y = {}
     self.accum_x = {}
     self.accum_y = {}
-    self.largo = 100
-    self.fuerzas_atractivas = {}
-    self.fuerzas_repulsivas = {}
+    self.largo = 1000 #Tamaño del frame
 
     # Guardo opciones
     self.iters = iters
     self.verbose = verbose
-    # TODO: faltan opciones TEMPERATURA
+    self.temp = temp
     self.refresh = refresh
     self.c1 = c1
     self.c2 = c2
+    #Guardamos las constantes K para no realizar demasiadas raices cuadradas en el algoritmo
+    self.k1 = self.c1 * sqrt((self.largo)**2 / len(self.vertices))
+    self.k2 = self.c2 * sqrt((self.largo)**2 / len(self.vertices))
+    self.epsilon = 1 #Minima distancia entre vertices
+    self.cooling = cooling
+    self.gravedad = grav
 
   def inicializar_posiciones (self):
     for vertice in self.vertices:
@@ -74,27 +79,77 @@ class LayoutGraph:
 
   def actualizar_posicion (self):
     for vertice in self.vertices:
-      #CUIDADO CON LOS BORDES DE LA VENTANA
-      self.posicion_x[vertice] += self.accum_x[vertice]
-      self.posicion_y[vertice] += self.accum_y[vertice]
+      fx = self.accum_x[vertice]
+      fy = self.accum_y[vertice]
+      modF = sqrt (fx**2 + fy**2)
+      if modF > self.temp:
+        fx = (fx / modF) * self.temp
+        fy = (fy / modF) * self.temp
+        self.accum_x[vertice] = fx
+        self.accum_y[vertice] = fy
+
+      nuevaPosicionX = self.posicion_x[vertice] + self.accum_x[vertice]
+      nuevaPosicionY = self.posicion_y[vertice] + self.accum_y[vertice]
+      
+      if nuevaPosicionX > self.largo:
+        self.posicion_x[vertice] = self.largo
+      elif nuevaPosicionX < 0:
+        self.posicion_x[vertice] = 0
+      else: self.posicion_x[vertice] = nuevaPosicionX
+      
+      if nuevaPosicionY > self.largo:
+        self.posicion_y[vertice] = self.largo
+      elif nuevaPosicionY < 0:
+        self.posicion_y[vertice] = 0
+      else: self.posicion_y[vertice] = nuevaPosicionY
+  
+  def actualizar_temperatura (self):
+    self.temp = self.cooling * self.temp
   
   def distancia (self, v1, v2):
     dist = sqrt((self.posicion_x[v2] - self.posicion_x[v1])**2 + (self.posicion_y[v2] - self.posicion_y[v1])**2)
     return dist
   
   def f_repulsion (self, dist):
-    k = self.c1 * sqrt((self.largo)**2 / len(self.vertices))
-    f = k**2 / dist
+    f = self.k1**2 / dist
     return f
   
   def f_atraccion (self, dist):
-    k = self.c2 * sqrt ((self.largo)**2 / len(self.vertices))
-    f = dist**2 / k
+    f = dist**2 / self.k2
     return f
 
+  def divison_por_cero (self, dist, v1, v2):
+    while (dist < self.epsilon):
+      fRandom = random()
+      self.posicion_x[v1] += fRandom
+      self.posicion_y[v1] += fRandom
+      self.posicion_x[v2] -= fRandom
+      self.posicion_y[v2] -= fRandom
+      dist = self.distancia(v1, v2)
+    return dist
+
+  def calcular_gravedad (self):
+    centro = self.largo/2
+    for v in self.vertices:
+      dist = sqrt ((self.posicion_x[v] - centro)**2 + (self.posicion_y[v] - centro)**2)
+      #Caso division por cero
+      while (dist < self.epsilon):
+        fRandom = random()
+        self.posicion_x[v] += fRandom
+        self.posicion_y[v] += fRandom
+        dist = sqrt ((self.posicion_x[v] - centro)**2 + (self.posicion_y[v] - centro)**2)
+
+      fx = ((self.gravedad * (self.posicion_x[v] - centro)) / dist)
+      fy = ((self.gravedad * (self.posicion_y[v] - centro)) / dist)
+      self.accum_x[v] -= fx
+      self.accum_y[v] -= fy
+  
   def calcular_f_atrac (self):
     for [v1, v2] in self.aristas:
       distancia = self.distancia(v1, v2)
+      # Caso de division por cero
+      self.divison_por_cero(distancia, v1, v2)
+
       modF = self.f_atraccion (distancia)
       fx = (modF * (self.posicion_x[v2]-self.posicion_x[v1])) / distancia
       fy = (modF * (self.posicion_y[v2]-self.posicion_y[v1])) / distancia
@@ -108,6 +163,9 @@ class LayoutGraph:
       for v2 in self.vertices:
         if v1 != v2:
           distancia = self.distancia(v1, v2)
+          # Caso de divison por cero
+          self.divison_por_cero(distancia, v1, v2)
+          
           modF = self.f_repulsion (distancia)
           fx = (modF * (self.posicion_x[v2]-self.posicion_x[v1])) / distancia
           fy = (modF * (self.posicion_y[v2]-self.posicion_y[v1])) / distancia
@@ -120,9 +178,13 @@ class LayoutGraph:
     self.inicializar_accum()
     self.calcular_f_atrac()
     self.calcular_f_rep()
+    self.calcular_gravedad()
     self.actualizar_posicion()
+    self.actualizar_temperatura()
   
   def dibujar (self):
+    plt.pause(0.005)
+    plt.clf()
     axes = plt.gca()
     axes.set_xlim([0, self.largo])
     axes.set_ylim([0, self.largo])
@@ -139,12 +201,15 @@ class LayoutGraph:
     un layout
     """
     self.inicializar_posiciones()
-    self.dibujar()
-    plt.show()
+    plt.ion()
     for iter in range(self.iters):
       self.step()
-      self.dibujar()
-      plt.show()
+      if self.refresh != 0 and (iter % self.refresh == 0):
+        self.dibujar()
+      elif self.refresh == 0:
+        self.dibujar()
+    plt.ioff()
+    plt.show()
 
 def main():
   # Definimos los argumentos de linea de comando que aceptamos
@@ -163,12 +228,47 @@ def main():
     help='Cantidad de iteraciones a efectuar',
     default=10
   )
+  # Cantidad de refreshes, opcional, 1 por defecto
+  parser.add_argument(
+    '--refresh',
+    type=int,
+    help='Cada cuantas iteraciones graficar',
+    default=1
+  )
   # Temperatura inicial
   parser.add_argument(
     '--temp',
     type=float,
     help='Temperatura inicial',
     default=100.0
+  )
+  # Constante de repulsion
+  parser.add_argument(
+    '--c1',
+    type = float,
+    help = 'Constante de repulsion',
+    default = 0.1
+  )
+  # Constante de atraccion
+  parser.add_argument(
+    '--c2',
+    type = float,
+    help = 'Constante de atraccion',
+    default = 2
+  )
+  # Constante de enfriamiento
+  parser.add_argument(
+    '--cooling',
+    type = float,
+    help = 'Constante de enfriamiento',
+    default = 0.95
+  )
+  # Constante de gravedad
+  parser.add_argument(
+    '--grav',
+    type = float,
+    help = 'Constante de gravedad',
+    default = 3
   )
   # Archivo del cual leer el grafo
   parser.add_argument(
@@ -178,21 +278,17 @@ def main():
 
   args = parser.parse_args()
 
-  # Descomentar abajo para ver funcionamiento de argparse
-  # print args.verbose
-  # print args.iters    
-  # print args.file_name
-  # print args.temp
-  # return
-
   # Creamos nuestro objeto LayoutGraph
   layout_gr = LayoutGraph(
-    grafo = leer_archivo (args.file_name),
-    iters = args.iters,
-    refresh = 1,
-    c1=0.1,
-    c2=5.0,
-    verbose=False
+    leer_archivo (args.file_name),
+    args.iters,
+    args.refresh,
+    args.temp,
+    args.c1,
+    args.c2,
+    args.cooling,
+    args.grav,
+    args.verbose
   )
 
   # Ejecutamos el layout
