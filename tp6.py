@@ -17,6 +17,7 @@ from random import random, uniform
 from math import sqrt
 
 
+# Lee un archivo que contiene un grafo, devuelve el grafo en forma G = [V,E]
 def leer_archivo (nombreArchivo):
   grafoArchivo = open (nombreArchivo, "r")
   grafo = [[], []]
@@ -45,6 +46,7 @@ class LayoutGraph:
     c2: constante de atracción
     cooling: Constante de enfriamiento
     grav: constante de gravedad
+    largo: Tamaño del frame
     verbose: si está encendido, activa los comentarios
     """
 
