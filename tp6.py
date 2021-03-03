@@ -1,8 +1,13 @@
 #! /usr/bin/python
 
-# 6ta Practica Laboratorio 
+# Trabajo Practico Final
 # Complementos Matematicos I
-# Ejemplo parseo argumentos
+# Blas Barbagelata - Tomas Castro Rojas
+
+# Linea de comando para ejecutar el algoritmo:
+# python3 Barbagelata_CastroRojas.py file_name 
+# Banderas opcionales (sin corchetes):
+# [-h] [-v] [--iters ITERS] [--refresh REFRESH] [--temp TEMP] [--c1 C1] [--c2 C2] [--cooling COOLING] [--grav GRAV]
 
 import argparse
 import matplotlib.pyplot as plt
@@ -38,6 +43,7 @@ class LayoutGraph:
     c1: constante de repulsión
     c2: constante de atracción
     cooling: Constante de enfriamiento
+    grav: constante de gravedad
     verbose: si está encendido, activa los comentarios
     """
 
@@ -47,11 +53,11 @@ class LayoutGraph:
     self.aristas = grafo[1]
 
     # Inicializo estado
-    self.posicion_x = {}
-    self.posicion_y = {}
-    self.accum_x = {}
-    self.accum_y = {}
-    self.largo = 1000 #Tamaño del frame
+    self.posicionX = {}
+    self.posicionY = {}
+    self.acumX = {}
+    self.acumY = {}
+    self.largo = 500 #Tamaño del frame
 
     # Guardo opciones
     self.iters = iters
@@ -60,141 +66,161 @@ class LayoutGraph:
     self.refresh = refresh
     self.c1 = c1
     self.c2 = c2
-    #Guardamos las constantes K para no realizar demasiadas raices cuadradas en el algoritmo
-    self.k1 = self.c1 * sqrt((self.largo)**2 / len(self.vertices))
-    self.k2 = self.c2 * sqrt((self.largo)**2 / len(self.vertices))
-    self.epsilon = 1 #Minima distancia entre vertices
     self.cooling = cooling
     self.gravedad = grav
 
+    # Guardamos las constantes K para no realizar demasiadas raices cuadradas en el algoritmo
+    ratio = sqrt((self.largo)**2 / len(self.vertices))
+    self.k1 = self.c1 * ratio
+    self.k2 = self.c2 * ratio
+    self.epsilon = 1 #Minima distancia entre vertices
+
+  # Inicializa las posiciones de los vertices de forma aleatoria
   def inicializar_posiciones (self):
     for vertice in self.vertices:
-      self.posicion_x[vertice] = uniform (0, self.largo)
-      self.posicion_y[vertice] = uniform (0, self.largo)
+      self.posicionX[vertice] = uniform (0, self.largo)
+      self.posicionY[vertice] = uniform (0, self.largo)
   
-  def inicializar_accum (self):
+  # Inicializa los acumuladores de fuerza en 0
+  def inicializar_acum (self):
     for vertice in self.vertices:
-      self.accum_x[vertice] = 0
-      self.accum_y[vertice] = 0
-
-  def actualizar_posicion (self):
-    for vertice in self.vertices:
-      fx = self.accum_x[vertice]
-      fy = self.accum_y[vertice]
-      modF = sqrt (fx**2 + fy**2)
-      if modF > self.temp:
-        fx = (fx / modF) * self.temp
-        fy = (fy / modF) * self.temp
-        self.accum_x[vertice] = fx
-        self.accum_y[vertice] = fy
-
-      nuevaPosicionX = self.posicion_x[vertice] + self.accum_x[vertice]
-      nuevaPosicionY = self.posicion_y[vertice] + self.accum_y[vertice]
-      
-      if nuevaPosicionX > self.largo:
-        self.posicion_x[vertice] = self.largo
-      elif nuevaPosicionX < 0:
-        self.posicion_x[vertice] = 0
-      else: self.posicion_x[vertice] = nuevaPosicionX
-      
-      if nuevaPosicionY > self.largo:
-        self.posicion_y[vertice] = self.largo
-      elif nuevaPosicionY < 0:
-        self.posicion_y[vertice] = 0
-      else: self.posicion_y[vertice] = nuevaPosicionY
+      self.acumX[vertice] = 0
+      self.acumY[vertice] = 0
   
-  def actualizar_temperatura (self):
-    self.temp = self.cooling * self.temp
-  
+  # Calcula la distancia euclidiana entre dos vertices
   def distancia (self, v1, v2):
-    dist = sqrt((self.posicion_x[v2] - self.posicion_x[v1])**2 + (self.posicion_y[v2] - self.posicion_y[v1])**2)
+    dist = sqrt((self.posicionX[v2] - self.posicionX[v1])**2 + (self.posicionY[v2] - self.posicionY[v1])**2)
     return dist
   
-  def f_repulsion (self, dist):
-    f = self.k1**2 / dist
-    return f
-  
+  # Calcula la fuerza de atraccion
   def f_atraccion (self, dist):
     f = dist**2 / self.k2
     return f
 
+  # Calcula la fuerza de repulsion
+  def f_repulsion (self, dist):
+    f = self.k1**2 / dist
+    return f
+
+  # Si la distancia entre dos vertices es menor a la minima, aplica fuerzas
+  # aleatorias a los vertices hasta que supera la distancia minima
   def divison_por_cero (self, dist, v1, v2):
     while (dist < self.epsilon):
       fRandom = random()
-      self.posicion_x[v1] += fRandom
-      self.posicion_y[v1] += fRandom
-      self.posicion_x[v2] -= fRandom
-      self.posicion_y[v2] -= fRandom
+      self.posicionX[v1] += fRandom
+      self.posicionY[v1] += fRandom
+      self.posicionX[v2] -= fRandom
+      self.posicionY[v2] -= fRandom
       dist = self.distancia(v1, v2)
     return dist
 
-  def calcular_gravedad (self):
-    centro = self.largo/2
-    for v in self.vertices:
-      dist = sqrt ((self.posicion_x[v] - centro)**2 + (self.posicion_y[v] - centro)**2)
-      #Caso division por cero
-      while (dist < self.epsilon):
-        fRandom = random()
-        self.posicion_x[v] += fRandom
-        self.posicion_y[v] += fRandom
-        dist = sqrt ((self.posicion_x[v] - centro)**2 + (self.posicion_y[v] - centro)**2)
-
-      fx = ((self.gravedad * (self.posicion_x[v] - centro)) / dist)
-      fy = ((self.gravedad * (self.posicion_y[v] - centro)) / dist)
-      self.accum_x[v] -= fx
-      self.accum_y[v] -= fy
-  
+  # Calcula las fuerzas de atraccion entre las aristas
   def calcular_f_atrac (self):
     for [v1, v2] in self.aristas:
       distancia = self.distancia(v1, v2)
       # Caso de division por cero
       self.divison_por_cero(distancia, v1, v2)
 
-      modF = self.f_atraccion (distancia)
-      fx = (modF * (self.posicion_x[v2]-self.posicion_x[v1])) / distancia
-      fy = (modF * (self.posicion_y[v2]-self.posicion_y[v1])) / distancia
-      self.accum_x[v1] += fx
-      self.accum_y[v1] += fy
-      self.accum_x[v2] -= fx
-      self.accum_y[v2] -= fy
+      moduloF = self.f_atraccion (distancia)
+      fx = (moduloF * (self.posicionX[v2]-self.posicionX[v1])) / distancia
+      fy = (moduloF * (self.posicionY[v2]-self.posicionY[v1])) / distancia
+      self.acumX[v1] += fx
+      self.acumY[v1] += fy
+      self.acumX[v2] -= fx
+      self.acumY[v2] -= fy
 
+  # Calcula las fuerzas de repulsion entre vertices
   def calcular_f_rep (self):
     for v1 in self.vertices:
       for v2 in self.vertices:
         if v1 != v2:
-          distancia = self.distancia(v1, v2)
+          dist = self.distancia(v1, v2)
           # Caso de divison por cero
-          self.divison_por_cero(distancia, v1, v2)
+          self.divison_por_cero(dist, v1, v2)
           
-          modF = self.f_repulsion (distancia)
-          fx = (modF * (self.posicion_x[v2]-self.posicion_x[v1])) / distancia
-          fy = (modF * (self.posicion_y[v2]-self.posicion_y[v1])) / distancia
-          self.accum_x[v1] -= fx
-          self.accum_y[v1] -= fy
-          self.accum_x[v2] += fx
-          self.accum_y[v2] += fy
+          moduloF = self.f_repulsion (dist)
+          fx = (moduloF * (self.posicionX[v2]-self.posicionX[v1])) / dist
+          fy = (moduloF * (self.posicionY[v2]-self.posicionY[v1])) / dist
+          self.acumX[v1] -= fx
+          self.acumY[v1] -= fy
+          self.acumX[v2] += fx
+          self.acumY[v2] += fy
   
+  # Calcula la fuerza de gravedad que se ejerce sobre cada vertice
+  def calcular_gravedad (self):
+    centro = self.largo/2
+    for v in self.vertices:
+      dist = sqrt ((self.posicionX[v] - centro)**2 + (self.posicionY[v] - centro)**2)
+      #Caso division por cero
+      while (dist < self.epsilon):
+        fRandom = random()
+        self.posicionX[v] += fRandom
+        self.posicionY[v] += fRandom
+        dist = sqrt ((self.posicionX[v] - centro)**2 + (self.posicionY[v] - centro)**2)
+
+      fx = ((self.gravedad * (self.posicionX[v] - centro)) / dist)
+      fy = ((self.gravedad * (self.posicionY[v] - centro)) / dist)
+      self.acumX[v] -= fx
+      self.acumY[v] -= fy
+
+  # Actualiza las posiciones de los vertices
+  def actualizar_posicion (self):
+    for vertice in self.vertices:
+      fx = self.acumX[vertice]
+      fy = self.acumY[vertice]
+      moduloF = sqrt (fx**2 + fy**2)
+      if moduloF > self.temp:
+        fx = (fx / moduloF) * self.temp
+        fy = (fy / moduloF) * self.temp
+        self.acumX[vertice] = fx
+        self.acumY[vertice] = fy
+
+      nuevaPosicionX = self.posicionX[vertice] + self.acumX[vertice]
+      nuevaPosicionY = self.posicionY[vertice] + self.acumY[vertice]
+      
+      if nuevaPosicionX > self.largo:
+        self.posicionX[vertice] = self.largo
+      elif nuevaPosicionX < 0:
+        self.posicionX[vertice] = 0
+      else: self.posicionX[vertice] = nuevaPosicionX
+      
+      if nuevaPosicionY > self.largo:
+        self.posicionY[vertice] = self.largo
+      elif nuevaPosicionY < 0:
+        self.posicionY[vertice] = 0
+      else: self.posicionY[vertice] = nuevaPosicionY
+
+  # Actualiza la temperatura
+  def actualizar_temperatura (self):
+    self.temp = self.cooling * self.temp
+
+  # Rutinas a aplicar en cada iteracion del algoritmo
   def step(self):
-    self.inicializar_accum()
+    self.inicializar_acum()
     self.calcular_f_atrac()
     self.calcular_f_rep()
     self.calcular_gravedad()
     self.actualizar_posicion()
     self.actualizar_temperatura()
   
-  def dibujar (self):
+  # Dibuja los vertices y aristas
+  def actualizar_plot (self):
     plt.pause(0.005)
     plt.clf()
     axes = plt.gca()
     axes.set_xlim([0, self.largo])
     axes.set_ylim([0, self.largo])
-    plt.scatter (self.posicion_x.values(), self.posicion_y.values())
+    plt.scatter (self.posicionX.values(), self.posicionY.values())
     for arista in self.aristas:
-      vertice1 = arista[0]
-      vertice2 = arista[1]
-      plt.plot((self.posicion_x[vertice1], self.posicion_x[vertice2]), (self.posicion_y[vertice1], self.posicion_y[vertice2]))
+      v1 = arista[0]
+      v2 = arista[1]
+      plt.plot((self.posicionX[v1], self.posicionX[v2]), (self.posicionY[v1], self.posicionY[v2]))
 
-  
+  # Si la opcion verbose esta activada, imprime un mensaje
+  def imprimir_mensaje(self, mensaje):
+    if self.verbose:
+      print(mensaje)
+
   def layout(self):
     """
     Aplica el algoritmo de Fruchtermann-Reingold para obtener (y mostrar)
@@ -202,38 +228,38 @@ class LayoutGraph:
     """
     self.inicializar_posiciones()
     plt.ion()
+    self.actualizar_plot()
     for iter in range(self.iters):
       self.step()
       if self.refresh != 0 and (iter % self.refresh == 0):
-        self.dibujar()
-      elif self.refresh == 0:
-        self.dibujar()
+        self.actualizar_plot()
     plt.ioff()
+    self.actualizar_plot()
     plt.show()
 
 def main():
   # Definimos los argumentos de linea de comando que aceptamos
   parser = argparse.ArgumentParser()
 
-  # Verbosidad, opcional, False por defecto
+  # Verbosidad
   parser.add_argument(
     '-v', '--verbose',
     action='store_true',
     help='Muestra mas informacion al correr el programa'
   )
-  # Cantidad de iteraciones, opcional, 50 por defecto
+  # Cantidad de iteraciones
   parser.add_argument(
     '--iters',
     type=int,
     help='Cantidad de iteraciones a efectuar',
-    default=10
+    default=50
   )
-  # Cantidad de refreshes, opcional, 1 por defecto
+  # Cantidad de refreshes 1 por defecto
   parser.add_argument(
     '--refresh',
     type=int,
     help='Cada cuantas iteraciones graficar',
-    default=1
+    default=5
   )
   # Temperatura inicial
   parser.add_argument(
@@ -254,7 +280,7 @@ def main():
     '--c2',
     type = float,
     help = 'Constante de atraccion',
-    default = 2
+    default = 3
   )
   # Constante de enfriamiento
   parser.add_argument(
@@ -268,7 +294,7 @@ def main():
     '--grav',
     type = float,
     help = 'Constante de gravedad',
-    default = 3
+    default = 2.5
   )
   # Archivo del cual leer el grafo
   parser.add_argument(
