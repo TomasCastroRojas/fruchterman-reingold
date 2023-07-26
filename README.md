@@ -20,5 +20,10 @@ id_n id_4
 Las aristas no deben repetirse. Se pueden encontrar varios ejemplos en el directorio `grafos`.
 Los distintos parametros del parametro influyen en como varia la visualizacion paso a paso. No hay una configuración ideal.
 Los valores por defecto sirven para mostrar una animación fluida. Se alienta probar variaciones y ver cómo afecta al proceso.
+
+## Ejemplo
+
+![Gif](ejemplo.gif)
+
 ### Dependencias
 Este proyecto requiere `matplotlib`, `argparse` y `numpy`.
