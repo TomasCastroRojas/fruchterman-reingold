@@ -15,23 +15,18 @@ import argparse
 import matplotlib.pyplot as plt
 from random import random, uniform
 from math import sqrt
+import matplotlib.collections as collections
+import numpy as np
 
 
-# Lee un archivo que contiene un grafo, devuelve el grafo en forma G = [V,E]
-def leer_archivo (nombreArchivo):
-  grafoArchivo = open (nombreArchivo, "r")
-  grafo = [[], []]
-  cantVertices = int(grafoArchivo.readline().rstrip("\n"))
-  lineas = grafoArchivo.readlines()
-  grafoArchivo.close()
-  cantLineas = len(lineas)
-  #Agrego los vertices
-  for vertices in range(cantVertices):
-    grafo[0].append(lineas[vertices].rstrip("\n"))
-  #Agrego las aristas
-  for aristas in range(cantVertices,cantLineas):
-    grafo[1].append(lineas[aristas].split())
-  return grafo
+# Lee un archivo que contiene un grafo, devuelve el grafo en forma G = (V,E)
+def leer_archivo (filename: str) ->tuple[list[str], list[str]]:
+  with open(filename, 'r') as file:
+    lineas = file.readlines()
+  n = int(lineas[0])
+  vertices = [v.strip() for v in lineas[1:n+1]]
+  aristas = [e.split() for e in lineas[n+1:]]
+  return vertices, aristas
 
 class LayoutGraph:
 
@@ -51,15 +46,12 @@ class LayoutGraph:
     """
 
     # Guardo el grafo
-    self.grafo = grafo
     self.vertices = grafo[0]
     self.aristas = grafo[1]
 
     # Inicializo estado
-    self.posicionX = {}
-    self.posicionY = {}
-    self.acumX = {}
-    self.acumY = {}
+    self.posiciones = {v: np.random.rand(2)*largo for v in self.vertices}
+    self.acum = {}
     self.largo = largo #Tamaño del frame
 
     # Guardo opciones
@@ -77,135 +69,94 @@ class LayoutGraph:
     self.k1 = self.c1 * ratio
     self.k2 = self.c2 * ratio
     self.epsilon = 1 #Minima distancia entre vertices
-
-  # Inicializa las posiciones de los vertices de forma aleatoria
-  def inicializar_posiciones (self):
-    self.imprimir_mensaje(f"--Inicializando posiciones de los vertices--")
-    for vertice in self.vertices:
-      self.posicionX[vertice] = uniform (0, self.largo)
-      self.posicionY[vertice] = uniform (0, self.largo)
+    self.center = np.array((self.largo/2, self.largo/2))
   
   # Inicializa los acumuladores de fuerza en 0
   def inicializar_acum (self):
     self.imprimir_mensaje(f"--Inicializando acumuladores de fuerza--")
-    for vertice in self.vertices:
-      self.acumX[vertice] = 0
-      self.acumY[vertice] = 0
-  
-  # Calcula la distancia euclidiana entre dos vertices
-  def distancia (self, v1, v2):
-    dist = sqrt((self.posicionX[v2] - self.posicionX[v1])**2 + (self.posicionY[v2] - self.posicionY[v1])**2)
-    return dist
-  
-  # Calcula la fuerza de atraccion
-  def f_atraccion (self, dist):
-    f = dist**2 / self.k2
-    return f
-
-  # Calcula la fuerza de repulsion
-  def f_repulsion (self, dist):
-    f = self.k1**2 / dist
-    return f
+    self.acum = {v: np.zeros(2) for v in self.vertices}
 
   # Si la distancia entre dos vertices es menor a la minima, aplica fuerzas
   # aleatorias a los vertices hasta que supera la distancia minima
   def divison_por_cero (self, dist, v1, v2):
+    e = self.posiciones[v2] - self.posiciones[v1]
     while (dist < self.epsilon):
       self.imprimir_mensaje(f"--Distancia menor a la minima. Aplicando fuerza aleatoria--")
-      fRandom = random()
-      self.posicionX[v1] += fRandom
-      self.posicionY[v1] += fRandom
-      self.posicionX[v2] -= fRandom
-      self.posicionY[v2] -= fRandom
-      dist = self.distancia(v1, v2)
-    return dist
+
+      fRandom = np.random.rand(2)
+      self.posiciones[v1] += fRandom
+      self.posiciones[v2] -= fRandom
+      e = self.posiciones[v2] - self.posiciones[v1]
+      dist = np.linalg.norm(e)
+    return dist, e
 
   # Calcula las fuerzas de atraccion entre las aristas
   def calcular_f_atrac (self):
     self.imprimir_mensaje(f"--Calculando fuerzas de atraccion--")
-    for [v1, v2] in self.aristas:
-      dist = self.distancia(v1, v2)
-      # Caso de division por cero
-      dist = self.divison_por_cero(dist, v1, v2)
 
-      moduloF = self.f_atraccion (dist)
-      fx = (moduloF * (self.posicionX[v2]-self.posicionX[v1])) / dist
-      fy = (moduloF * (self.posicionY[v2]-self.posicionY[v1])) / dist
-      self.acumX[v1] += fx
-      self.acumY[v1] += fy
-      self.acumX[v2] -= fx
-      self.acumY[v2] -= fy
+    for v1, v2 in self.aristas:
+      e = self.posiciones[v2] - self.posiciones[v1]
+      dist = np.linalg.norm(e)
+      dist, e = self.divison_por_cero(dist, v1, v2)
+
+      moduloF = dist / self.k2
+      f = moduloF * e
+      self.acum[v1] += f
+      self.acum[v2] -= f
+
     self.imprimir_mensaje(f"--Fin calculo fuerzas de atraccion--")
 
   # Calcula las fuerzas de repulsion entre vertices
   def calcular_f_rep (self):
     self.imprimir_mensaje(f"--Calculando fuerzas de repulsion--")
+
     for v1 in self.vertices:
       for v2 in self.vertices:
         if v1 != v2:
-          dist = self.distancia(v1, v2)
-          # Caso de divison por cero
-          dist = self.divison_por_cero(dist, v1, v2)
+          e = self.posiciones[v2] - self.posiciones[v1]
+          dist = np.linalg.norm(e)
+          dist, e = self.divison_por_cero(dist, v1, v2)
           
-          moduloF = self.f_repulsion (dist)
-          fx = (moduloF * (self.posicionX[v2]-self.posicionX[v1])) / dist
-          fy = (moduloF * (self.posicionY[v2]-self.posicionY[v1])) / dist
-          self.acumX[v1] -= fx
-          self.acumY[v1] -= fy
-          self.acumX[v2] += fx
-          self.acumY[v2] += fy
+          moduloF = (self.k1 / dist)**2
+          f = moduloF * e
+          self.acum[v1] -= f
+          self.acum[v2] += f
+
     self.imprimir_mensaje(f"--Fin calculo fuerzas de repulsion--")
   
   # Calcula la fuerza de gravedad que se ejerce sobre cada vertice
   def calcular_gravedad (self):
     self.imprimir_mensaje(f"--Calculando fuerzas de gravedad--")
-    centro = self.largo/2
+
     for v in self.vertices:
-      dist = sqrt ((self.posicionX[v] - centro)**2 + (self.posicionY[v] - centro)**2)
+      e = self.posiciones[v] - self.center
+      dist = np.linalg.norm(e)
       #Caso division por cero
       while (dist < self.epsilon):
-        fRandom = random()
-        self.posicionX[v] += fRandom
-        self.posicionY[v] += fRandom
-        dist = sqrt ((self.posicionX[v] - centro)**2 + (self.posicionY[v] - centro)**2)
+        fRandom = np.random.rand(2)
+        self.posiciones[v] += fRandom
+        e = self.posiciones[v] - self.center
+        dist = np.linalg.norm(e)
 
-      fx = ((self.gravedad * (self.posicionX[v] - centro)) / dist)
-      fy = ((self.gravedad * (self.posicionY[v] - centro)) / dist)
-      self.acumX[v] -= fx
-      self.acumY[v] -= fy
+      f = (self.gravedad/dist) * e
+      self.acum[v] -= f
+
     self.imprimir_mensaje(f"--Fin calculo fuerzas de gravedad--")
 
   # Actualiza las posiciones de los vertices
   def actualizar_posicion (self):
     self.imprimir_mensaje(f"--Actualizando posiciones de los vertices--")
-    for vertice in self.vertices:
-      fx = self.acumX[vertice]
-      fy = self.acumY[vertice]
-      moduloF = sqrt (fx**2 + fy**2)
-      if moduloF > self.temp:
-        fx = (fx / moduloF) * self.temp
-        fy = (fy / moduloF) * self.temp
-        self.acumX[vertice] = fx
-        self.acumY[vertice] = fy
 
-      nuevaPosicionX = self.posicionX[vertice] + self.acumX[vertice]
-      nuevaPosicionY = self.posicionY[vertice] + self.acumY[vertice]
+    for v in self.vertices:
+      f = self.acum[v]
+      moduloF = np.linalg.norm(f)
+      if moduloF > self.temp:
+        self.acum[v] *= self.temp / moduloF
+
+      self.posiciones[v] += self.acum[v]
       
-      if nuevaPosicionX > self.largo:
-        self.imprimir_mensaje(f"--Vertice fuera de rango. Acomodando--")
-        self.posicionX[vertice] = self.largo
-      elif nuevaPosicionX < 0:
-        self.imprimir_mensaje(f"--Vertice fuera de rango. Acomodando--")
-        self.posicionX[vertice] = 0
-      else: self.posicionX[vertice] = nuevaPosicionX
+      np.clip(self.posiciones[v], 0, self.largo, out=self.posiciones[v])
       
-      if nuevaPosicionY > self.largo:
-        self.imprimir_mensaje(f"--Vertice fuera de rango. Acomodando--")
-        self.posicionY[vertice] = self.largo
-      elif nuevaPosicionY < 0:
-        self.imprimir_mensaje(f"--Vertice fuera de rango. Acomodando--")
-        self.posicionY[vertice] = 0
-      else: self.posicionY[vertice] = nuevaPosicionY
     self.imprimir_mensaje(f"--Nuevas posiciones calculadas--")
   
   # Actualiza la temperatura
@@ -224,16 +175,22 @@ class LayoutGraph:
   
   # Dibuja los vertices y aristas
   def actualizar_plot (self):
-    plt.pause(0.005)
     plt.clf()
-    axes = plt.gca()
-    axes.set_xlim([0, self.largo])
-    axes.set_ylim([0, self.largo])
-    plt.scatter (self.posicionX.values(), self.posicionY.values())
-    for arista in self.aristas:
-      v1 = arista[0]
-      v2 = arista[1]
-      plt.plot((self.posicionX[v1], self.posicionX[v2]), (self.posicionY[v1], self.posicionY[v2]))
+    plt.xlim(0, self.largo)
+    plt.ylim(0, self.largo)
+
+    for v1, v2 in self.aristas:
+      p1 = self.posiciones[v1]
+      p2 = self.posiciones[v2]
+      plt.plot([p1[0], p2[0]], [p1[1], p2[1]])
+    
+    xcoord = [p[0] for p in self.posiciones.values()]
+    ycoord = [p[1] for p in self.posiciones.values()]
+
+    plt.scatter(xcoord, ycoord)
+
+    plt.show()
+    plt.pause(0.005)
 
   # Si la opcion verbose esta activada, imprime un mensaje
   def imprimir_mensaje(self, mensaje):
@@ -245,19 +202,19 @@ class LayoutGraph:
     Aplica el algoritmo de Fruchtermann-Reingold para obtener (y mostrar)
     un layout
     """
-    self.inicializar_posiciones()
     plt.ion()
     self.actualizar_plot()
     for iter in range(self.iters):
       self.imprimir_mensaje(f"\n--Iteracion {iter}--")
+
       self.step()
       if self.refresh != 0 and (iter % self.refresh == 0):
         self.imprimir_mensaje(f"--Dibuja el grafo en iteracion {iter}--")
+
         self.actualizar_plot()
-    plt.ioff()
     self.imprimir_mensaje(f"--Fin del algoritmo--")
+    plt.ioff()
     self.actualizar_plot()
-    plt.show() # Imprime el estado final
 
 def main():
   # Definimos los argumentos de linea de comando que aceptamos
@@ -274,14 +231,14 @@ def main():
     '--iters',
     type = int,
     help = 'Cantidad de iteraciones a efectuar',
-    default = 50
+    default = 100
   )
   # Cantidad de refreshes 0 por defecto
   parser.add_argument(
     '--refresh',
     type = int,
     help = 'Cada cuantas iteraciones graficar',
-    default = 1
+    default = 5
   )
   # Temperatura inicial
   parser.add_argument(
@@ -332,10 +289,11 @@ def main():
   )
 
   args = parser.parse_args()
+  graph = leer_archivo(args.file_name)
 
   # Creamos nuestro objeto LayoutGraph
   layout_gr = LayoutGraph(
-    leer_archivo (args.file_name),
+    graph,
     args.iters,
     args.refresh,
     args.temp,
